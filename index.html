@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -115,7 +116,7 @@ function render(){
     $("#pub").onclick=async()=>{
       const k=$("#kind").value,p=parseInt($("#p").value,10),tel=$("#tel").value.replace(/\s/g,"");
       if(!p||p<=0||tel.length<9){msg="Merci d’indiquer un prix et un numéro valide.";ok=false;return render()}
-      const row={type_logement:$("#t").value,quartier:$("#q").value,description:$("#d").value.trim(),telephone:tel};
+      const row={user_id:user.id,type_logement:$("#t").value,quartier:$("#q").value,description:$("#d").value.trim(),telephone:tel};
       if(k==="a")row.prix=p;else row.budget=p;
       const r=await sb.from(k==="a"?"annonces":"demandes").insert(row);
       if(r.error){msg="Erreur : "+r.error.message;ok=false;return render()}
