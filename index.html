@@ -1,144 +1,39 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trano Tanà – Maisons à louer à Antananarivo</title>
-<style>
-:root{--bg:#f6f7f5;--card:#fff;--tx:#1d2420;--mu:#66706a;--ac:#1f7a4d;--ac2:#e8f3ec;--bd:#dfe4e0;--wa:#25a244;--er:#b3261e}
-@media (prefers-color-scheme:dark){:root{--bg:#141816;--card:#1e2420;--tx:#eef2ef;--mu:#9aa59e;--ac:#4cc58a;--ac2:#1f2e26;--bd:#2f3832;--er:#ff8a80}}
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tx);line-height:1.4}
-main{max-width:640px;margin:0 auto;padding:12px 14px 40px}
-header{display:flex;justify-content:space-between;align-items:center}
-h1{font-size:20px;margin:6px 0 2px}
-.sub{color:var(--mu);font-size:13px;margin:0 0 12px}
-.tabs{display:flex;gap:6px;margin-bottom:12px}
-.tabs button{flex:1;padding:10px 4px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
-.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
-.filters{display:flex;gap:8px;margin-bottom:12px}
-select,input,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;font-size:15px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px}
-.card h3{margin:0 0 4px;font-size:16px}
-.price{color:var(--ac);font-weight:700;font-size:17px}
-.tag{display:inline-block;background:var(--ac2);color:var(--ac);border-radius:20px;padding:2px 10px;font-size:12px;margin:0 6px 6px 0}
-.row{display:flex;gap:8px;margin-top:10px}
-.btn{flex:1;text-align:center;padding:10px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);text-decoration:none;font-size:14px;font-weight:600;cursor:pointer}
-.btn.wa{background:var(--wa);border-color:var(--wa);color:#fff}
-.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
-.btn.del{color:var(--er)}
-.small{padding:6px 10px;flex:none;font-size:13px}
-label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
-.empty{text-align:center;color:var(--mu);padding:30px 10px}
-.msg{font-size:14px;margin-top:10px;color:var(--er)}
-.msg.ok{color:var(--ac)}
-</style>
-</head>
-<body>
-<main>
-<header><div><h1>🏠 Trano Tanà</h1><p class="sub">Maisons à louer à Antananarivo</p></div><div id="who"></div></header>
-<div class="tabs" id="tabs">
-  <button data-t="annonces" class="on">Maisons</button>
-  <button data-t="demandes">Demandes</button>
-  <button data-t="publier">Publier</button>
-</div>
-<div id="view"><div class="empty">Chargement…</div></div>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script>
-const SUPABASE_URL="https://rjgbllebvgmxrdnwapxg.supabase.co";
-const SUPABASE_KEY="sb_publishable_FomXaWSkF5jtqsXn55Dwbg_cTxKVGLJ";
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-const Q=["Analakely","Isoraka","Ivandry","Ankorondrano","Ambohimanarina","Ambatobe","67 Ha","Ankadifotsy","Autre quartier"];
-const T=["Studio","Maison 2 pièces","Maison 3 pièces","Maison 4 pièces et +"];
-const PR=[300000,500000,800000,1200000,2000000];
-let user=null,tab="annonces",fq="",fp="",annonces=[],demandes=[],msg="",ok=false,mode="login";
-const $=s=>document.querySelector(s);
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ar=n=>Number(n).toLocaleString("fr-FR")+" Ar";
-const wa=t=>"https://wa.me/261"+String(t).replace(/\D/g,"").replace(/^(261|0)/,"");
-const opts=(a,all)=>(all?'<option value="">'+all+'</option>':'')+a.map(x=>'<option>'+esc(x)+'</option>').join("");
+create table public.annonces (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  type_logement text not null,
+  quartier text not null,
+  prix integer not null check (prix > 0),
+  description text,
+  telephone text not null,
+  created_at timestamptz not null default now()
+);
 
-async function load(){
-  const [a,d]=await Promise.all([
-    sb.from("annonces").select("*").order("created_at",{ascending:false}),
-    sb.from("demandes").select("*").order("created_at",{ascending:false})]);
-  if(a.error||d.error){msg="Impossible de charger les données. Vérifie ta connexion.";ok=false}
-  annonces=a.data||[];demandes=d.data||[];render();
-}
-function card(x,isReq){
-  const price=isReq?x.budget:x.prix;
-  return '<div class="card"><span class="tag">'+esc(x.quartier)+'</span><span class="tag">'+esc(x.type_logement)+'</span>'+
-  '<h3>'+(isReq?'Budget max : ':'Loyer : ')+'<span class="price">'+ar(price)+' / mois</span></h3>'+
-  '<div style="color:var(--mu);font-size:14px">'+esc(x.description||"")+'</div>'+
-  '<div class="row"><a class="btn" href="tel:'+esc(x.telephone)+'">📞 Appeler</a><a class="btn wa" href="'+esc(wa(x.telephone))+'" target="_blank" rel="noopener">WhatsApp</a></div>'+
-  (isReq?'<div class="row"><button class="btn pri" data-see="'+esc(x.quartier)+'|'+price+'">Voir les maisons correspondantes</button></div>':'')+
-  (user&&user.id===x.user_id?'<div class="row"><button class="btn del small" data-del="'+x.id+'" data-tb="'+(isReq?"demandes":"annonces")+'">Supprimer mon annonce</button></div>':'')+'</div>';
-}
-function authView(){
-  const l=mode==="login";
-  return '<div class="card"><h3>'+(l?"Connexion":"Créer un compte")+'</h3><p class="sub">Un compte est nécessaire pour publier.</p>'+
-  '<label>Adresse e-mail</label><input id="em" type="email" autocomplete="email">'+
-  '<label>Mot de passe (6 caractères minimum)</label><input id="pw" type="password" autocomplete="'+(l?"current-password":"new-password")+'">'+
-  '<div class="row"><button class="btn pri" id="go">'+(l?"Se connecter":"Créer mon compte")+'</button></div>'+
-  '<div class="row"><button class="btn small" id="sw">'+(l?"Pas de compte ? S’inscrire":"J’ai déjà un compte")+'</button></div>'+
-  '<div class="msg'+(ok?" ok":"")+'">'+esc(msg)+'</div></div>';
-}
-function formView(){
-  return '<div class="card"><label>Je suis…</label><select id="kind"><option value="a">Propriétaire (je propose une maison)</option><option value="d">Locataire (je cherche une maison)</option></select>'+
-  '<label>Quartier</label><select id="q">'+opts(Q)+'</select>'+
-  '<label>Type de logement</label><select id="t">'+opts(T)+'</select>'+
-  '<label id="plab">Loyer par mois (Ar)</label><input id="p" type="number" inputmode="numeric" placeholder="ex. 500000">'+
-  '<label>Description</label><textarea id="d" rows="3" placeholder="Eau, électricité, cour, meublé…"></textarea>'+
-  '<label>Téléphone / WhatsApp</label><input id="tel" type="tel" inputmode="tel" placeholder="034 00 000 00">'+
-  '<div class="row"><button class="btn pri" id="pub">Publier</button></div><div class="msg'+(ok?" ok":"")+'">'+esc(msg)+'</div></div>';
-}
-function render(){
-  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
-  $("#who").innerHTML=user?'<button class="btn small" id="out">Déconnexion</button>':"";
-  if($("#out"))$("#out").onclick=async()=>{await sb.auth.signOut()};
-  const v=$("#view");
-  if(tab==="publier"){
-    if(!user){v.innerHTML=authView();
-      $("#sw").onclick=()=>{mode=mode==="login"?"signup":"login";msg="";render()};
-      $("#go").onclick=async()=>{
-        const email=$("#em").value.trim(),password=$("#pw").value;
-        if(!email||password.length<6){msg="Indique un e-mail et un mot de passe de 6 caractères minimum.";ok=false;return render()}
-        const r=mode==="login"?await sb.auth.signInWithPassword({email,password}):await sb.auth.signUp({email,password});
-        if(r.error){msg=r.error.message;ok=false;return render()}
-        if(mode==="signup"&&!r.data.session){msg="Compte créé. Vérifie ta boîte e-mail pour confirmer, puis connecte-toi.";ok=true;mode="login";return render()}
-        msg="";
-      };return}
-    v.innerHTML=formView();
-    $("#kind").onchange=e=>{$("#plab").textContent=e.target.value==="a"?"Loyer par mois (Ar)":"Budget maximum par mois (Ar)"};
-    $("#pub").onclick=async()=>{
-      const k=$("#kind").value,p=parseInt($("#p").value,10),tel=$("#tel").value.replace(/\s/g,"");
-      if(!p||p<=0||tel.length<9){msg="Merci d’indiquer un prix et un numéro valide.";ok=false;return render()}
-      const row={type_logement:$("#t").value,quartier:$("#q").value,description:$("#d").value.trim(),telephone:tel};
-      if(k==="a")row.prix=p;else row.budget=p;
-      const r=await sb.from(k==="a"?"annonces":"demandes").insert(row);
-      if(r.error){msg="Erreur : "+r.error.message;ok=false;return render()}
-      msg="";tab=k==="a"?"annonces":"demandes";fq="";fp="";await load();
-    };return;
-  }
-  const isReq=tab==="demandes",key=isReq?"budget":"prix";
-  const list=(isReq?demandes:annonces).filter(x=>(!fq||x.quartier===fq)&&(!fp||(isReq?x[key]>=+fp:x[key]<=+fp)));
-  v.innerHTML='<div class="filters"><select id="fq">'+opts(Q,"Tous les quartiers")+'</select>'+
-  '<select id="fp"><option value="">'+(isReq?"Budget min.":"Prix max.")+'</option>'+PR.map(n=>'<option value="'+n+'">'+ar(n)+'</option>').join("")+'</select></div>'+
-  (list.length?list.map(x=>card(x,isReq)).join(""):'<div class="empty">Aucun résultat pour le moment.<br>Sois le premier à publier !</div>')+
-  (msg&&!ok?'<div class="msg">'+esc(msg)+'</div>':"");
-  $("#fq").value=fq;$("#fp").value=fp;
-  $("#fq").onchange=e=>{fq=e.target.value;render()};
-  $("#fp").onchange=e=>{fp=e.target.value;render()};
-  v.querySelectorAll("[data-see]").forEach(b=>b.onclick=()=>{
-    const [q,p]=b.dataset.see.split("|");tab="annonces";fq=q;fp=PR.find(n=>n>=+p)||"";render()});
-  v.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
-    if(!confirm("Supprimer cette annonce ?"))return;
-    await sb.from(b.dataset.tb).delete().eq("id",b.dataset.del);load()});
-}
-document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;fq="";fp="";msg="";render()});
-sb.auth.onAuthStateChange((_e,s)=>{user=s?s.user:null;render()});
-sb.auth.getSession().then(({data})=>{user=data.session?data.session.user:null;load()});
-</script>
-</body>
-</html>
+create table public.demandes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  type_logement text not null,
+  quartier text not null,
+  budget integer not null check (budget > 0),
+  description text,
+  telephone text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.annonces enable row level security;
+alter table public.demandes enable row level security;
+
+create policy "annonces visibles par tous" on public.annonces for select using (true);
+create policy "demandes visibles par tous" on public.demandes for select using (true);
+
+create policy "publier une annonce" on public.annonces for insert to authenticated with check (auth.uid() = user_id);
+create policy "publier une demande" on public.demandes for insert to authenticated with check (auth.uid() = user_id);
+
+create policy "modifier ses annonces" on public.annonces for update to authenticated using (auth.uid() = user_id);
+create policy "modifier ses demandes" on public.demandes for update to authenticated using (auth.uid() = user_id);
+
+create policy "supprimer ses annonces" on public.annonces for delete to authenticated using (auth.uid() = user_id);
+create policy "supprimer ses demandes" on public.demandes for delete to authenticated using (auth.uid() = user_id);
+
+grant select on public.annonces, public.demandes to anon, authenticated;
+grant insert, update, delete on public.annonces, public.demandes to authenticated;
