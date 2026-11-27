@@ -27,12 +27,16 @@ select,input,textarea{width:100%;padding:10px;border:1px solid var(--bd);border-
 .btn.wa{background:var(--wa);border-color:var(--wa);color:#fff}
 .btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
 .btn.del{color:var(--er)}
+.btn:disabled{opacity:.6}
 .small{padding:6px 10px;flex:none;font-size:13px}
 label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
 .empty{text-align:center;color:var(--mu);padding:30px 10px}
 .msg{font-size:14px;margin-top:10px;color:var(--er)}
 .msg.ok{color:var(--ac)}
 .who{display:flex;gap:6px;align-items:center}
+.ph{display:flex;gap:6px;overflow-x:auto;margin:8px 0}
+.ph img{height:130px;border-radius:10px;flex:none;background:var(--ac2);display:block}
+.hint{font-size:12px;color:var(--mu);margin-top:4px}
 </style>
 </head>
 <body>
@@ -50,6 +54,7 @@ label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
 const SUPABASE_URL="https://rjgbllebvgmxrdnwapxg.supabase.co";
 const SUPABASE_KEY="sb_publishable_FomXaWSkF5jtqsXn55Dwbg_cTxKVGLJ";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const PHOTO_BASE=SUPABASE_URL+"/storage/v1/object/public/photos/";
 const Q=["Analakely","Isoraka","Ivandry","Ankorondrano","Ambohimanarina","Ambatobe","67 Ha","Ankadifotsy","Autre quartier"];
 const T=["Studio","Maison 2 pièces","Maison 3 pièces","Maison 4 pièces et +"];
 const PR=[300000,500000,800000,1200000,2000000];
@@ -60,6 +65,23 @@ const ar=n=>Number(n).toLocaleString("fr-FR")+" Ar";
 const toEmail=v=>{v=v.trim();if(v.includes("@"))return v;let d=v.replace(/\D/g,"");if(d.startsWith("261"))d=d.slice(3);d=d.replace(/^0/,"");return d.length===9?"261"+d+"@tel.tranotana.app":null};
 const wa=t=>"https://wa.me/261"+String(t).replace(/\D/g,"").replace(/^(261|0)/,"");
 const opts=(a,all)=>(all?'<option value="">'+all+'</option>':'')+a.map(x=>'<option>'+esc(x)+'</option>').join("");
+const okU=u=>typeof u==="string"&&u.startsWith(PHOTO_BASE);
+
+function compress(file){return new Promise((res,rej)=>{
+  const img=new Image(),u=URL.createObjectURL(file);
+  img.onload=()=>{const M=1000,s=Math.min(1,M/Math.max(img.width,img.height)),c=document.createElement("canvas");
+    c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);
+    c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);
+    c.toBlob(b=>b?res(b):rej(new Error("compression impossible")),"image/jpeg",0.72)};
+  img.onerror=()=>rej(new Error("photo illisible"));img.src=u})}
+async function uploadPhotos(files){
+  const urls=[];
+  for(const [i,f] of [...files].slice(0,3).entries()){
+    const b=await compress(f),path=user.id+"/"+Date.now()+"-"+i+".jpg";
+    const r=await sb.storage.from("photos").upload(path,b,{contentType:"image/jpeg"});
+    if(r.error)throw r.error;
+    urls.push(sb.storage.from("photos").getPublicUrl(path).data.publicUrl)}
+  return urls}
 
 async function checkAdmin(){
   isAdmin=false;
@@ -77,7 +99,9 @@ async function load(){
 function card(x,isReq){
   const price=isReq?x.budget:x.prix;
   const mine=user&&user.id===x.user_id;
+  const ph=(x.photos||[]).filter(okU).slice(0,3);
   return '<div class="card"><span class="tag">'+esc(x.quartier)+'</span><span class="tag">'+esc(x.type_logement)+'</span>'+
+  (ph.length?'<div class="ph">'+ph.map(u=>'<a href="'+esc(u)+'" target="_blank" rel="noopener"><img src="'+esc(u)+'" alt="Photo de la maison" loading="lazy"></a>').join("")+'</div>':"")+
   '<h3>'+(isReq?'Budget max : ':'Loyer : ')+'<span class="price">'+ar(price)+' / mois</span></h3>'+
   '<div style="color:var(--mu);font-size:14px">'+esc(x.description||"")+'</div>'+
   '<div class="row"><a class="btn" href="tel:'+esc(x.telephone)+'">📞 Appeler</a><a class="btn wa" href="'+esc(wa(x.telephone))+'" target="_blank" rel="noopener">WhatsApp</a></div>'+
@@ -99,6 +123,7 @@ function formView(){
   '<label>Type de logement</label><select id="t">'+opts(T)+'</select>'+
   '<label id="plab">Loyer par mois (Ar)</label><input id="p" type="number" inputmode="numeric" placeholder="ex. 500000">'+
   '<label>Description</label><textarea id="d" rows="3" maxlength="500" placeholder="Eau, électricité, cour, meublé…"></textarea>'+
+  '<div id="phw"><label>Photos de la maison (3 maximum)</label><input id="ph" type="file" accept="image/*" multiple><div class="hint">Les photos sont réduites automatiquement avant l’envoi.</div></div>'+
   '<label>Téléphone / WhatsApp</label><input id="tel" type="tel" inputmode="tel" placeholder="034 00 000 00">'+
   '<div class="row"><button class="btn pri" id="pub">Publier</button></div><div class="msg'+(ok?" ok":"")+'">'+esc(msg)+'</div></div>';
 }
@@ -119,12 +144,20 @@ function render(){
         msg="";
       };return}
     v.innerHTML=formView();
-    $("#kind").onchange=e=>{$("#plab").textContent=e.target.value==="a"?"Loyer par mois (Ar)":"Budget maximum par mois (Ar)"};
+    $("#kind").onchange=e=>{const a=e.target.value==="a";$("#plab").textContent=a?"Loyer par mois (Ar)":"Budget maximum par mois (Ar)";$("#phw").style.display=a?"block":"none"};
     $("#pub").onclick=async()=>{
       const k=$("#kind").value,p=parseInt($("#p").value,10),tel=$("#tel").value.replace(/[^\d+]/g,"");
       if(!p||p<=0||!/^\+?\d{9,13}$/.test(tel)){msg="Merci d’indiquer un prix et un numéro valide.";ok=false;return render()}
       const row={type_logement:$("#t").value,quartier:$("#q").value,description:$("#d").value.trim().slice(0,500),telephone:tel};
-      if(k==="a")row.prix=p;else row.budget=p;
+      if(k==="a"){
+        row.prix=p;row.photos=[];
+        const fl=$("#ph").files;
+        if(fl.length){
+          $("#pub").disabled=true;$("#pub").textContent="Envoi des photos…";
+          try{row.photos=await uploadPhotos(fl)}
+          catch(e){msg="Photos : "+(e.message||"envoi impossible")+". Essaie avec d’autres photos (JPG ou PNG).";ok=false;return render()}
+        }
+      }else row.budget=p;
       const r=await sb.from(k==="a"?"annonces":"demandes").insert(row);
       if(r.error){msg="Erreur : "+r.error.message;ok=false;return render()}
       msg="";tab=k==="a"?"annonces":"demandes";fq="";fp="";await load();
@@ -143,8 +176,12 @@ function render(){
     const [q,p]=b.dataset.see.split("|");tab="annonces";fq=q;fp=PR.find(n=>n>=+p)||"";render()});
   v.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
     if(!confirm("Supprimer cette annonce ?"))return;
-    const r=await sb.from(b.dataset.tb).delete().eq("id",b.dataset.del);
-    if(r.error){alert("Suppression impossible : "+r.error.message)}
+    const tb=b.dataset.tb,id=b.dataset.del;
+    const item=(tb==="annonces"?annonces:demandes).find(z=>String(z.id)===id);
+    const r=await sb.from(tb).delete().eq("id",id);
+    if(r.error){alert("Suppression impossible : "+r.error.message);return}
+    const paths=((item&&item.photos)||[]).filter(okU).map(u=>decodeURIComponent(u.slice(PHOTO_BASE.length)));
+    if(paths.length)await sb.storage.from("photos").remove(paths);
     load()});
 }
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;fq="";fp="";msg="";render()});
